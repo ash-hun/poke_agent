@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pokemon Agent Controller</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f0f13; color: #e2e8f0; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    .card { background: #1a1a24; border: 1px solid #2d2d3f; border-radius: 8px; }
+    .tab-btn { transition: all 0.15s; }
+    .tab-btn.active { background: #3b3f5c; color: #a5b4fc; border-bottom: 2px solid #818cf8; }
+    .tab-btn:not(.active):hover { background: #252535; }
+    textarea, input[type="text"], input[type="number"], select {
+      background: #0f0f1a; border: 1px solid #3d3d52; color: #e2e8f0;
+      border-radius: 4px; padding: 6px 10px; width: 100%; font-size: 12px;
+      font-family: inherit;
+    }
+    textarea:focus, input:focus, select:focus {
+      outline: none; border-color: #818cf8; box-shadow: 0 0 0 2px rgba(129,140,248,0.2);
+    }
+    .btn { padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; border: none; }
+    .btn-green  { background: #166534; color: #86efac; }
+    .btn-green:hover  { background: #15803d; }
+    .btn-yellow { background: #713f12; color: #fde68a; }
+    .btn-yellow:hover { background: #854d0e; }
+    .btn-red    { background: #7f1d1d; color: #fca5a5; }
+    .btn-red:hover    { background: #991b1b; }
+    .btn-indigo { background: #312e81; color: #a5b4fc; }
+    .btn-indigo:hover { background: #3730a3; }
+    .btn-gray   { background: #374151; color: #9ca3af; }
+    .btn-gray:hover   { background: #4b5563; }
+    .turn-item { border-left: 3px solid transparent; transition: all 0.15s; cursor: pointer; }
+    .turn-item:hover { border-left-color: #818cf8; background: #1e1e2e; }
+    .turn-item.has-error { border-left-color: #ef4444; }
+    .scroll-area { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3d3d52 transparent; }
+    pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; line-height: 1.6; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-green  { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .dot-yellow { background: #eab308; box-shadow: 0 0 6px #eab308; }
+    .dot-gray   { background: #6b7280; }
+    .badge-pill { display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; }
+    .label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .section-title { font-size: 11px; color: #818cf8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; border-bottom: 1px solid #2d2d3f; padding-bottom: 6px; }
+    .tool-badge { background: #1e293b; border: 1px solid #334155; border-radius: 4px; padding: 3px 8px; font-size: 10px; margin-bottom: 3px; }
+    input[type="range"] { accent-color: #818cf8; width: 100%; cursor: pointer; }
+    .w-full { width: 100%; }
+    .loop-running  { background: #14532d; color: #86efac; }
+    .loop-paused   { background: #713f12; color: #fde68a; }
+    .loop-stopped  { background: #1e293b; color: #94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between px-4 py-2 border-b border-gray-800" style="background:#13131c">
+    <div class="flex items-center gap-3">
+      <span class="text-indigo-400 font-bold text-sm">⚡ Pokemon Agent Controller</span>
+      <span class="status-dot dot-gray" id="ws-dot"></span>
+      <span id="ws-label" class="text-xs text-gray-500">Connecting…</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="loop-badge" class="badge-pill loop-stopped">STOPPED</span>
+      <span id="hdr-turn"  class="text-xs text-gray-400">Turn —</span>
+      <span id="hdr-model" class="text-xs text-gray-500">—</span>
+      <span id="hdr-time"  class="text-xs text-gray-600">—</span>
+    </div>
+  </div>
+
+  <!-- 4-column grid -->
+  <div class="grid gap-2 p-2" style="grid-template-columns:196px 1fr 284px 200px;height:calc(100vh - 41px);">
+
+    <!-- ── Col 1: Game View ──────────────────────────────────────────────── -->
+    <div class="flex flex-col gap-2" style="min-width:0;overflow:hidden">
+
+      <div class="card p-2">
+        <div class="label">Screen</div>
+        <div style="background:#000;border-radius:4px;overflow:hidden;">
+          <img id="ss-img" src="" alt="" style="width:100%;image-rendering:pixelated;display:none;" />
+          <div id="ss-placeholder" class="flex items-center justify-center text-gray-600 text-xs" style="height:112px;">No screenshot</div>
+        </div>
+      </div>
+
+      <div class="card p-2">
+        <div class="label">Status</div>
+        <div class="space-y-1 text-xs">
+          <div class="flex justify-between"><span class="text-gray-500">Frame</span><span id="s-frame">—</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">Game</span><span id="s-game" class="text-indigo-300" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">Badges</span><span id="s-badges">0/8</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">Milestone</span><span id="s-milestone" class="text-green-400" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">Context</span><span id="s-ctx">—</span></div>
+          <div class="flex justify-between"><span class="text-gray-500">Duration</span><span id="s-dur">—</span></div>
+        </div>
+        <div id="badge-chips" class="flex flex-wrap gap-1 mt-2"></div>
+      </div>
+
+      <!-- Loop Controls -->
+      <div class="card p-2">
+        <div class="section-title">Loop Control</div>
+        <div class="flex flex-col gap-2">
+          <button class="btn btn-green" onclick="loopAction('start')">▶ Start</button>
+          <div class="flex gap-1">
+            <button class="btn btn-yellow" style="flex:1" onclick="loopAction('pause')">⏸ Pause</button>
+            <button class="btn btn-green"  style="flex:1" onclick="loopAction('resume')">⏵ Resume</button>
+          </div>
+          <button class="btn btn-red" onclick="loopAction('stop')">⏹ Stop</button>
+        </div>
+        <div id="loop-msg" class="text-xs text-gray-500 mt-2 text-center min-h-4"></div>
+      </div>
+
+      <!-- Supervisor log -->
+      <div class="card p-2 flex-1 scroll-area" style="min-height:0">
+        <div class="label">Supervisor Log</div>
+        <div id="sup-log" class="text-xs space-y-1 text-yellow-600"></div>
+        <div id="sup-empty" class="text-gray-600 text-xs">No interventions</div>
+      </div>
+    </div>
+
+    <!-- ── Col 2: LLM Inference ──────────────────────────────────────────── -->
+    <div class="flex flex-col gap-2" style="min-width:0">
+
+      <div class="card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0">
+        <div class="flex border-b border-gray-800 px-2 pt-1 gap-1 flex-shrink-0">
+          <button class="tab-btn active px-3 py-1 text-xs rounded-t" id="tab-sys"  onclick="switchTab('sys')">System Prompt</button>
+          <button class="tab-btn px-3 py-1 text-xs rounded-t"        id="tab-obs"  onclick="switchTab('obs')">Observation</button>
+          <button class="tab-btn px-3 py-1 text-xs rounded-t"        id="tab-resp" onclick="switchTab('resp')">Response</button>
+          <button class="tab-btn px-3 py-1 text-xs rounded-t"        id="tab-plan" onclick="switchTab('plan')">Action Plan</button>
+        </div>
+        <div class="p-2 flex-1 scroll-area" style="min-height:0">
+          <pre id="pane-sys"  class="text-gray-300"></pre>
+          <pre id="pane-obs"  class="text-gray-300" style="display:none"></pre>
+          <pre id="pane-resp" class="text-gray-300" style="display:none"></pre>
+          <pre id="pane-plan" class="text-yellow-300" style="display:none"></pre>
+        </div>
+      </div>
+
+      <div class="card p-2" style="max-height:150px;overflow-y:auto;">
+        <div class="label">Tool Calls (this turn)</div>
+        <div id="tool-list"></div>
+        <div id="tool-empty" class="text-gray-600 text-xs">None</div>
+      </div>
+    </div>
+
+    <!-- ── Col 3: Controller ─────────────────────────────────────────────── -->
+    <div class="flex flex-col gap-2 scroll-area" style="min-width:0;overflow-y:auto;">
+
+      <!-- Model + Tokens -->
+      <div class="card p-3">
+        <div class="section-title">Model</div>
+        <div class="label">LLM Model</div>
+        <select id="ctrl-model">
+          <option value="claude-opus-4-7">claude-opus-4-7 (Best)</option>
+          <option value="claude-sonnet-4-6">claude-sonnet-4-6 (Fast)</option>
+          <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (Fastest)</option>
+        </select>
+        <div class="label mt-2">Max Tokens</div>
+        <input type="number" id="ctrl-tokens" value="8192" min="1024" max="32000" step="1024" />
+        <button class="btn btn-indigo w-full mt-2" onclick="saveModelCfg()">💾 Apply Model</button>
+      </div>
+
+      <!-- System Prompt -->
+      <div class="card p-3">
+        <div class="section-title">System Prompt</div>
+        <textarea id="ctrl-prompt" rows="12" style="resize:vertical;font-size:10px;line-height:1.5;"></textarea>
+        <div class="flex gap-2 mt-2">
+          <button class="btn btn-indigo" style="flex:1" onclick="savePrompt()">💾 Save</button>
+          <button class="btn btn-gray" onclick="resetPrompt()">↺ Reset</button>
+        </div>
+      </div>
+
+      <!-- Supervisor Timing -->
+      <div class="card p-3">
+        <div class="section-title">Supervisor Timing</div>
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between items-center">
+              <div class="label" style="margin-bottom:0">Directional Hold (frames)</div>
+              <span id="v-dir" class="text-xs text-indigo-400">12</span>
+            </div>
+            <input type="range" id="ctrl-dir" min="6" max="30" value="12" oninput="document.getElementById('v-dir').textContent=this.value" />
+          </div>
+          <div>
+            <div class="flex justify-between items-center">
+              <div class="label" style="margin-bottom:0">Button Tap (frames)</div>
+              <span id="v-btn" class="text-xs text-indigo-400">6</span>
+            </div>
+            <input type="range" id="ctrl-btn" min="3" max="20" value="6" oninput="document.getElementById('v-btn').textContent=this.value" />
+          </div>
+          <div>
+            <div class="flex justify-between items-center">
+              <div class="label" style="margin-bottom:0">Post-Action Settle (frames)</div>
+              <span id="v-settle" class="text-xs text-indigo-400">48</span>
+            </div>
+            <input type="range" id="ctrl-settle" min="12" max="120" value="48" oninput="document.getElementById('v-settle').textContent=this.value" />
+          </div>
+          <div>
+            <div class="flex justify-between items-center">
+              <div class="label" style="margin-bottom:0">Black Frame Polls</div>
+              <span id="v-black" class="text-xs text-indigo-400">5</span>
+            </div>
+            <input type="range" id="ctrl-black" min="1" max="10" value="5" oninput="document.getElementById('v-black').textContent=this.value" />
+          </div>
+        </div>
+        <button class="btn btn-indigo w-full mt-3" onclick="saveSupervisor()">💾 Apply Supervisor</button>
+      </div>
+
+      <!-- mGBA URL -->
+      <div class="card p-3">
+        <div class="section-title">mGBA Connection</div>
+        <div class="label">HTTP Base URL</div>
+        <input type="text" id="ctrl-url" value="http://127.0.0.1:5123" />
+        <div class="flex gap-2 mt-2">
+          <button class="btn btn-indigo" style="flex:1" onclick="saveUrl()">💾 Save</button>
+          <button class="btn btn-gray" onclick="testEmu()">🔌 Test</button>
+        </div>
+        <div id="emu-result" class="text-xs mt-2 text-gray-500 min-h-4"></div>
+      </div>
+
+      <!-- Save toast -->
+      <div id="save-toast" class="card p-2 text-center text-xs text-green-400" style="display:none;">✓ Config saved</div>
+    </div>
+
+    <!-- ── Col 4: History ────────────────────────────────────────────────── -->
+    <div class="card scroll-area p-2" style="min-width:0;overflow-y:auto;">
+      <div class="label">Turn History</div>
+      <div id="hist-list" class="space-y-1"></div>
+      <div id="hist-empty" class="text-gray-600 text-xs text-center mt-4">No turns yet</div>
+    </div>
+
+  </div>
+
+<script>
+  // ── Globals ──────────────────────────────────────────────────────────────
+  let ws = null;
+  let wsTimer = null;
+  let currentTab = 'sys';
+  let originalPrompt = '';
+
+  // ── WebSocket ─────────────────────────────────────────────────────────────
+  function connectWs() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => {
+      setDot('green', 'Live');
+      clearTimeout(wsTimer);
+    };
+
+    ws.onmessage = (e) => {
+      try { render(JSON.parse(e.data)); }
+      catch(err) { console.error('WS parse error', err); }
+    };
+
+    ws.onclose = ws.onerror = () => {
+      setDot('gray', 'Disconnected — reconnecting…');
+      wsTimer = setTimeout(connectWs, 3000);
+    };
+  }
+
+  function setDot(color, label) {
+    document.getElementById('ws-dot').className = 'status-dot dot-' + color;
+    document.getElementById('ws-label').textContent = label;
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function render(state) {
+    const cur = state.current;
+    const status = state.loopStatus || 'stopped';
+
+    // Header
+    document.getElementById('hdr-turn').textContent  = cur ? `Turn ${cur.turn}` : 'Turn —';
+    document.getElementById('hdr-model').textContent = state.meta?.model || '—';
+    document.getElementById('hdr-time').textContent  = state.updatedAt ? new Date(state.updatedAt).toLocaleTimeString() : '—';
+
+    const lb = document.getElementById('loop-badge');
+    lb.textContent = status.toUpperCase();
+    lb.className = 'badge-pill loop-' + status;
+
+    if (!cur) return;
+
+    // Screenshot
+    const img = document.getElementById('ss-img');
+    if (cur.screenshot) {
+      img.src = 'data:image/png;base64,' + cur.screenshot;
+      img.style.display = 'block';
+      document.getElementById('ss-placeholder').style.display = 'none';
+    }
+
+    // Stats
+    set('s-frame', cur.status?.frame ?? '—');
+    set('s-game', cur.status?.gameTitle || cur.status?.gameCode || '—');
+    set('s-badges', `${cur.badges}/8`);
+    set('s-milestone', cur.milestone || '—');
+    set('s-ctx', (cur.contextMessages ?? '—') + ' msgs');
+    set('s-dur', cur.durationMs ? `${(cur.durationMs/1000).toFixed(1)}s` : '—');
+
+    // Badge chips
+    const chips = document.getElementById('badge-chips');
+    chips.innerHTML = '';
+    (cur.badgeNames || []).forEach(n => {
+      const s = document.createElement('span');
+      s.className = 'badge-pill text-xs';
+      s.style.cssText = 'background:#14532d;color:#86efac;margin:1px;';
+      s.textContent = n;
+      chips.appendChild(s);
+    });
+
+    // LLM panes
+    setText('pane-sys',  cur.systemPrompt    || '');
+    setText('pane-obs',  cur.observationText || '');
+    setText('pane-resp', cur.claudeText      || '');
+    setText('pane-plan', cur.actionPlan      || '');
+
+    // Tool calls
+    const tl = document.getElementById('tool-list');
+    const te = document.getElementById('tool-empty');
+    tl.innerHTML = '';
+    if (cur.toolCalls && cur.toolCalls.length) {
+      te.style.display = 'none';
+      cur.toolCalls.forEach(tc => {
+        const d = document.createElement('div');
+        d.className = 'tool-badge';
+        const inp = typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input);
+        d.textContent = `${tc.name}  ${inp}`;
+        tl.appendChild(d);
+      });
+    } else {
+      te.style.display = 'block';
+    }
+
+    // Supervisor log
+    const sl = document.getElementById('sup-log');
+    const se = document.getElementById('sup-empty');
+    sl.innerHTML = '';
+    if (cur.supervisorInterventions && cur.supervisorInterventions.length) {
+      se.style.display = 'none';
+      cur.supervisorInterventions.forEach(s => {
+        const d = document.createElement('div');
+        d.textContent = '⚡ ' + s;
+        sl.appendChild(d);
+      });
+    } else {
+      se.style.display = 'block';
+    }
+
+    // History
+    renderHistory(state.history || []);
+  }
+
+  function renderHistory(history) {
+    const hl = document.getElementById('hist-list');
+    const he = document.getElementById('hist-empty');
+    hl.innerHTML = '';
+    if (!history.length) { he.style.display = 'block'; return; }
+    he.style.display = 'none';
+    history.forEach(t => {
+      const d = document.createElement('div');
+      d.className = 'turn-item px-2 py-1 rounded' + (t.error ? ' has-error' : '');
+      d.innerHTML = `
+        <div class="flex justify-between">
+          <span class="text-xs font-bold text-indigo-300">#${t.turn}</span>
+          <span class="text-xs text-gray-600">${t.durationMs ? (t.durationMs/1000).toFixed(1)+'s' : ''}</span>
+        </div>
+        <div class="text-xs text-gray-400" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.actionPlan || t.claudeText?.slice(0,55) || '—'}</div>
+        ${t.badges ? `<div class="text-xs text-green-500">${t.badges} badges</div>` : ''}
+        ${t.error ? `<div class="text-xs text-red-400" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">⚠ ${t.error}</div>` : ''}
+      `;
+      d.onclick = () => previewTurn(t);
+      hl.appendChild(d);
+    });
+  }
+
+  function previewTurn(t) {
+    if (t.screenshot) {
+      const img = document.getElementById('ss-img');
+      img.src = 'data:image/png;base64,' + t.screenshot;
+      img.style.display = 'block';
+    }
+    setText('pane-sys',  t.systemPrompt    || '');
+    setText('pane-obs',  t.observationText || '');
+    setText('pane-resp', t.claudeText      || '');
+    setText('pane-plan', t.actionPlan      || '');
+  }
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  function switchTab(name) {
+    ['sys','obs','resp','plan'].forEach(t => {
+      document.getElementById('tab-' + t).classList.remove('active');
+      document.getElementById('pane-' + t).style.display = 'none';
+    });
+    document.getElementById('tab-' + name).classList.add('active');
+    document.getElementById('pane-' + name).style.display = 'block';
+    currentTab = name;
+  }
+
+  // ── Loop Controls ─────────────────────────────────────────────────────────
+  async function loopAction(action) {
+    const msgs = { start:'Starting…', stop:'Stopping…', pause:'Paused.', resume:'Resuming…' };
+    setLoopMsg(msgs[action] || '');
+    try {
+      const r = await fetch(`/api/loop/${action}`, { method: 'POST' });
+      if (!r.ok) { const b = await r.text(); setLoopMsg('Error: ' + b); return; }
+    } catch(e) { setLoopMsg('Error: ' + e.message); }
+  }
+  function setLoopMsg(msg) {
+    const el = document.getElementById('loop-msg');
+    el.textContent = msg;
+    if (msg) setTimeout(() => { el.textContent = ''; }, 4000);
+  }
+
+  // ── Config ────────────────────────────────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const r = await fetch('/api/config');
+      const c = await r.json();
+      document.getElementById('ctrl-model').value = c.ai_model || 'claude-opus-4-7';
+      document.getElementById('ctrl-tokens').value = c.max_tokens || 8192;
+      document.getElementById('ctrl-prompt').value = c.system_prompt || '';
+      document.getElementById('ctrl-url').value    = c.mgba_http_base_url || '';
+      setSlider('ctrl-dir',    'v-dir',    c.directional_hold_frames  || 12);
+      setSlider('ctrl-btn',    'v-btn',    c.button_tap_frames        || 6);
+      setSlider('ctrl-settle', 'v-settle', c.post_action_settle_frames|| 48);
+      setSlider('ctrl-black',  'v-black',  c.black_frame_max_polls    || 5);
+      originalPrompt = c.system_prompt || '';
+    } catch(e) { console.error('Config load failed:', e); }
+  }
+
+  function setSlider(inputId, labelId, value) {
+    document.getElementById(inputId).value = value;
+    document.getElementById(labelId).textContent = value;
+  }
+
+  async function saveModelCfg() {
+    await patch({
+      ai_model: document.getElementById('ctrl-model').value,
+      max_tokens: parseInt(document.getElementById('ctrl-tokens').value),
+    });
+  }
+
+  async function savePrompt() {
+    await patch({ system_prompt: document.getElementById('ctrl-prompt').value });
+    originalPrompt = document.getElementById('ctrl-prompt').value;
+  }
+
+  function resetPrompt() {
+    document.getElementById('ctrl-prompt').value = originalPrompt;
+  }
+
+  async function saveSupervisor() {
+    await patch({
+      directional_hold_frames:   parseInt(document.getElementById('ctrl-dir').value),
+      button_tap_frames:         parseInt(document.getElementById('ctrl-btn').value),
+      post_action_settle_frames: parseInt(document.getElementById('ctrl-settle').value),
+      black_frame_max_polls:     parseInt(document.getElementById('ctrl-black').value),
+    });
+  }
+
+  async function saveUrl() {
+    await patch({ mgba_http_base_url: document.getElementById('ctrl-url').value.trim() });
+  }
+
+  async function patch(updates) {
+    try {
+      const r = await fetch('/api/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast();
+    } catch(e) { alert('Save failed: ' + e.message); }
+  }
+
+  function toast() {
+    const el = document.getElementById('save-toast');
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2500);
+  }
+
+  async function testEmu() {
+    const el = document.getElementById('emu-result');
+    el.textContent = 'Testing…';
+    el.style.color = '#9ca3af';
+    try {
+      const r = await fetch('/api/emulator/status');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      el.textContent = `✓ ${d.gameTitle || d.gameCode || 'Unknown'} (frame ${d.frame})`;
+      el.style.color = '#86efac';
+    } catch(e) {
+      el.textContent = '✗ Unreachable: ' + e.message;
+      el.style.color = '#fca5a5';
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function set(id, val)     { const el = document.getElementById(id); if (el) el.textContent = val; }
+  function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    connectWs();
+    loadConfig();
+  });
+</script>
+</body>
+</html>

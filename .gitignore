@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project Specific
+pss-mgba/
+*.gbc
+*.sav
+dashboard/state.json
+.claude/
+.omc/
+node_modules/
+AGENTS.md
+ANALYSIS.md
